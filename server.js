@@ -1,3 +1,33 @@
+// ========== تقليل السجلات ==========
+const isProduction = process.env.NODE_ENV === 'production' || true;
+
+// إخفاء السجلات غير الضرورية في الإنتاج
+if (isProduction) {
+    const originalLog = console.log;
+    const originalInfo = console.info;
+    const originalWarn = console.warn;
+    
+    console.log = function() {
+        // فقط سجل الأخطاء والتحذيرات المهمة
+        const args = Array.from(arguments);
+        if (args.some(arg => typeof arg === 'string' && 
+            (arg.includes('❌') || arg.includes('⚠️') || arg.includes('✅')))) {
+            originalLog.apply(console, args);
+        }
+    };
+    
+    console.info = function() {};
+    console.warn = function() {
+        // احتفظ بالتحذيرات المهمة فقط
+        const args = Array.from(arguments);
+        if (args.some(arg => typeof arg === 'string' && arg.includes('⚠️'))) {
+            originalWarn.apply(console, args);
+        }
+    };
+}
+
+console.log('✅ Server starting with minimal logging...');
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
